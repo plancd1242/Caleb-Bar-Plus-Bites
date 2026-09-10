@@ -1,0 +1,45 @@
+Caleb Bar + Bites — Custom Source-Available License
+Version 1.0, September 2026
+
+Copyright (c) 2026 Caleb Bar + Bites. All rights reserved except as granted below.
+
+This is a custom source-available license. It is not an OSI-approved open-source
+license and is not MIT, GPL, Apache, BSD, or any other standard open-source license.
+
+1. Permission
+You may download this project, use it for personal purposes, make local or private
+modifications, privately share original or modified copies with family and friends,
+and store original or modified copies in private repositories. Private recipients
+receive these same limited permissions and must retain this license and notices.
+
+2. Restrictions
+You may not publicly publish modified copies, create a public repository containing
+a modified copy, or publicly redistribute modified versions as a separate project.
+No permission is granted to publicly redistribute this project, modified or
+unmodified, without the copyright holder's separate written permission. Private
+sharing does not authorize recipients to publish the shared copies. Commercial
+redistribution and sublicensing beyond these permissions are not granted.
+
+3. Ownership and branding
+The copyright holder retains all ownership. This license does not grant ownership
+of or general trademark rights in Caleb Bar + Bites branding. The copyright holder
+may publish, modify, and operate the original project under separate terms.
+
+4. Third-party components
+Third-party libraries, fonts, and assets remain subject to their own licenses.
+This license covers only material for which the project copyright holder can grant
+permission. See THIRD_PARTY.md and dependency license files.
+
+5. Termination
+Permissions terminate if you violate these terms. On termination, stop using and
+sharing the project and remove copies you are not otherwise entitled to keep.
+
+6. Disclaimer
+THE PROJECT IS PROVIDED "AS IS", WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR
+NONINFRINGEMENT. TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE AUTHORS AND
+COPYRIGHT HOLDERS SHALL NOT BE LIABLE FOR CLAIMS, DAMAGES, OR OTHER LIABILITY
+ARISING FROM THE PROJECT OR ITS USE.
+
+For permissions beyond this license, contact the project copyright holder at:
+calebdorfman1242@gmail.com

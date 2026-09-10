@@ -1,0 +1,8 @@
+# Copy to .dev.vars, then set a private employee authorization code.
+# No real authorization code is included in this project.
+EMPLOYEE_CODE=""
+# Optional, server-only; the app works without this.
+GIPHY_API_KEY=""
+
+# OpenWeather key (server-side only). Paste your key between the quotes.
+OPENWEATHER_API_KEY=""
