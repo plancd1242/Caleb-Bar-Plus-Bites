@@ -1,5 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+const publicContacts = JSON.parse(await readFile('scripts/public-contact-allowlist.json', 'utf8'));
+function employeeScanContent(path, content) {
+  if (path !== 'LICENSE') return content;
+  return content.replace(/[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    (contact) => publicContacts.LICENSE.includes(createHash('sha256').update(contact).digest('hex')) ? '' : contact);
+}
 async function files(dir) {
   const all = [];
   for (const item of await readdir(dir, { withFileTypes: true })) {
@@ -16,6 +23,7 @@ const paths = [
   ...(await files('worker')),
   ...(await files('build')),
   'README.md',
+  'LICENSE',
   '.dev.vars.example',
   'wrangler.jsonc',
 ];
@@ -24,18 +32,19 @@ const localSecrets = [];
 try {
   const localEnv = await readFile('.dev.vars', 'utf8');
   for (const line of localEnv.split(/\r?\n/)) {
-    const match = line.match(/^(?:EMPLOYEE_CODE|GIPHY_API_KEY|OPENWEATHER_API_KEY)\s*=\s*(.*)$/);
+    const match = line.match(/^(EMPLOYEE_CODE|GIPHY_API_KEY|OPENWEATHER_API_KEY)\s*=\s*(.*)$/);
     if (!match) continue;
-    const value = match[1].trim().replace(/^(["'])(.*)\1$/, '$2');
-    if (value) localSecrets.push(value);
+    const value = match[2].trim().replace(/^(["'])(.*)\1$/, '$2');
+    if (value) localSecrets.push({ name: match[1], value });
   }
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
 for (const path of paths) {
-  if (!/\.(ts|svelte|js|css|json|jsonc|html|md|example|webmanifest)$/.test(path)) continue;
+  if (path !== 'LICENSE' && !/\.(ts|svelte|js|css|json|jsonc|html|md|example|webmanifest)$/.test(path)) continue;
   const content = await readFile(path, 'utf8');
-  if (localSecrets.some((value) => content.includes(value)))
+  if (localSecrets.some(({ name, value }) =>
+    (name === 'EMPLOYEE_CODE' ? employeeScanContent(path, content) : content).includes(value)))
     problems.push(path + ': local secret value found');
   if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(content))
     problems.push(path + ': private key found');
