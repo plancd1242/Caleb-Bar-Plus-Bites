@@ -1,4 +1,18 @@
 <script lang="ts">
+  import type { MenuItem } from '$lib/types';
+  import { money } from '$lib/pricing';
+  export let menu: MenuItem[];
+  export let onSpecial: (item: MenuItem) => void;
+  $: specials = menu.filter(
+    (item) =>
+      item.available !== false &&
+      item.visibility !== 'order' &&
+      Boolean(item.kids) === kids &&
+      (item.special ||
+        item.category === 'Specials' ||
+        item.visibility === 'menu' ||
+        item.visibility === 'both'),
+  );
   export let kids = false;
   export let onOrder: () => void;
   let back = false;
@@ -25,8 +39,27 @@
   <button class="primary" onclick={onOrder}>Let’s order <span>→</span></button>
 </div>
 <div class="menu-note">
-  Original artwork goes here. These readable placeholder menus are ready to be replaced.
+  Illustrated favorites below. Current prices and availability are shown in Place Your Order.
 </div>
+{#if specials.length}<section aria-label="Specials">
+    <h2>Specials</h2>
+    <p>Fresh additions to the live menu.</p>
+    <div class="item-grid">
+      {#each specials as item}<article class="item-card">
+          <div class="item-body">
+            <h3>{item.name}</h3>
+            <p>{item.description}</p>
+            <div class="item-bottom">
+              <strong>{item.price === null ? 'Price to confirm' : money(item.price)}</strong>
+              {#if item.visibility !== 'menu'}<button
+                  class="secondary"
+                  onclick={() => onSpecial(item)}>Order {item.name}</button
+                >{:else}<small>Ask staff about this item.</small>{/if}
+            </div>
+          </div>
+        </article>{/each}
+    </div>
+  </section>{/if}
 <div class="menu-stage">
   <div
     class="menu-flipper"
@@ -36,15 +69,19 @@
   >
     <div class="menu-face front" aria-hidden={back}>
       <img
-        src={kids ? '/menus/kids-menu.png' : '/menus/main-menu-front.png'}
-        alt={kids ? 'Caleb’s kids menu' : 'Caleb’s main menu front'}
+        src={kids
+          ? '/menus/kids-menu-thanksgiving-2026.png'
+          : '/menus/main-menu-front-thanksgiving-2026.png'}
+        alt={kids
+          ? 'Caleb’s Thanksgiving 2026 kids menu'
+          : 'Caleb’s Thanksgiving 2026 main menu front'}
         onerror={() => (failed = true)}
       />
     </div>
     {#if !kids}<div class="menu-face back" aria-hidden={!back}>
         <img
-          src="/menus/main-menu-back.png"
-          alt="Caleb’s main menu back"
+          src="/menus/main-menu-back-thanksgiving-2026.png"
+          alt="Caleb’s Thanksgiving 2026 main menu back"
           onerror={() => (failed = true)}
         />
       </div>{/if}

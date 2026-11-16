@@ -1,14 +1,12 @@
+import { celebrationResponse, integrationStatus } from './integrations';
 import { weatherResponse, type WeatherEnv } from './weather';
 import { DurableObject } from 'cloudflare:workers';
 import { currentMenu, defaultSettings } from '../src/lib/menu';
-import { quote } from '../src/lib/pricing';
-import {
-  statuses,
-  type CartLine,
-  type Order,
-  type Promotion,
-  type Settings,
-} from '../src/lib/types';
+import { verifiedQuote, validateOffer } from './promotions';
+import { defaultAnnouncements, validateAnnouncements } from '../src/lib/announcements';
+import { defaultSeasonal } from '../src/lib/seasonal';
+import { changeMenu } from '../src/lib/menu-management';
+import { statuses, type CartLine, type Order, type Settings } from '../src/lib/types';
 type Secrets = { EMPLOYEE_CODE?: string; GIPHY_API_KEY?: string };
 type Session = { id: string; employee: boolean; expires: number };
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -40,7 +38,42 @@ export class Restaurant extends DurableObject<Env & Secrets> {
     this.ctx.storage.sql.exec('DELETE FROM records WHERE key = ?', key);
   }
   settings() {
-    return this.get<Settings>('settings') ?? structuredClone(defaultSettings);
+    const saved = this.get<Settings>('settings') ?? structuredClone(defaultSettings);
+    if (!saved.announcements) {
+      saved.announcements = structuredClone(defaultAnnouncements);
+      this.put('settings', saved);
+    }
+    return saved;
+  }
+  used(id: string, customer: string, limit: number) {
+    return (
+      !!this.get('redeemed:' + id + ':' + customer) ||
+      (this.get<number>('redemptions:' + id) ?? 0) >= limit
+    );
+  }
+  approved(id: string, token: string, customer: string) {
+    const approval = this.get<{ offer: string; customer: string; expires: number }>(
+      'approval:' + token,
+    );
+    return (
+      !!approval &&
+      approval.offer === id &&
+      approval.customer === customer &&
+      approval.expires > Date.now()
+    );
+  }
+  price(body: Record<string, unknown>, settings: Settings, customer: string) {
+    return verifiedQuote(
+      body.cart as CartLine[],
+      currentMenu(settings).map((i) => ({
+        ...i,
+        available: i.available !== false && i.visibility !== 'menu',
+      })),
+      settings,
+      body,
+      (id) => this.used(id, customer, settings.offers!.find((o) => o.id === id)!.limit),
+      (id, token) => this.approved(id, token, customer),
+    );
   }
   session(request: Request) {
     const token = request.headers.get('Cookie')?.match(/(?:^|;\s*)barn_session=([^;]+)/)?.[1];
@@ -97,7 +130,7 @@ export class Restaurant extends DurableObject<Env & Secrets> {
         return value;
       };
       if (path === '/api/session' && method === 'GET') {
-        if (session) return json({ employee: session.employee });
+        if (session) return json({ employee: session.employee, customer: session.id });
         const token = crypto.randomUUID(),
           created = {
             id: crypto.randomUUID(),
@@ -105,13 +138,20 @@ export class Restaurant extends DurableObject<Env & Secrets> {
             expires: Date.now() + 12 * 3600000,
           };
         this.put('session:' + token, created);
-        return json({ employee: false }, 200, {
+        return json({ employee: false, customer: created.id }, 200, {
           'Set-Cookie': `barn_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${url.protocol === 'https:' ? '; Secure' : ''}`,
         });
       }
       if (path === '/api/menu' && method === 'GET') {
         const settings = this.settings();
-        return json({ menu: currentMenu(settings), settings });
+        const safe = {
+          ...settings,
+          offers: settings.offers?.map(({ couponHash, ...offer }) => ({
+            ...offer,
+            couponConfigured: !!couponHash,
+          })),
+        };
+        return json({ menu: currentMenu(settings), settings: safe });
       }
       if (!session)
         return json(
@@ -163,9 +203,17 @@ export class Restaurant extends DurableObject<Env & Secrets> {
       if (path === '/api/quote' && method === 'POST') {
         const body = await read();
         const s = this.settings();
-        return json(
-          quote(body.cart, currentMenu(s), s.promotions ? body.promotion : 'none', s.revision),
-        );
+        if (
+          body.coupon &&
+          (this.limited('coupon-session:' + session.id, 20, 300000) ||
+            this.limited(
+              'coupon-ip:' + (request.headers.get('CF-Connecting-IP') ?? 'local'),
+              60,
+              300000,
+            ))
+        )
+          return json({ error: 'Too many coupon attempts. Please wait five minutes.' }, 429);
+        return json(await this.price(body, s, session.id));
       }
       if (path === '/api/recover' && method === 'POST') {
         const body = await read();
@@ -213,12 +261,7 @@ export class Restaurant extends DurableObject<Env & Secrets> {
           body.name.trim().length > 60
         )
           throw new Error('Please enter a name between 2 and 60 characters.');
-        const priced = quote(
-          body.cart as CartLine[],
-          currentMenu(settings),
-          settings.promotions ? (body.promotion as Promotion) : 'none',
-          settings.revision,
-        );
+        const priced = await this.price(body, settings, session.id);
         if (!priced.lines.length)
           throw new Error('Your basket is empty. Add something delicious first.');
         if (body.revision !== settings.revision || body.total !== priced.total)
@@ -228,6 +271,32 @@ export class Restaurant extends DurableObject<Env & Secrets> {
           );
         let order!: Order;
         this.ctx.storage.transactionSync(() => {
+          const acknowledged = this.get<string>(key);
+          if (acknowledged) {
+            const prior = this.get<Order>('order:' + acknowledged)!;
+            if (prior.customer !== session.id) throw new Error('Order belongs to another session.');
+            order = prior;
+            return;
+          }
+          if (this.settings().revision !== settings.revision)
+            throw new Error('Menu changed. Review again.');
+          if (priced.offerId) {
+            const offer = settings.offers!.find((o) => o.id === priced.offerId)!;
+            if (this.used(offer.id, session.id, offer.limit))
+              throw new Error('Offer already redeemed or limit reached.');
+            if (Date.now() >= Date.parse(offer.expires))
+              throw new Error('Offer expired. Review again.');
+            this.put('redeemed:' + offer.id + ':' + session.id, true);
+            this.put(
+              'redemptions:' + offer.id,
+              (this.get<number>('redemptions:' + offer.id) ?? 0) + 1,
+            );
+            if (offer.eligibility === 'manager') {
+              if (!this.approved(offer.id, String(body.approvalToken), session.id))
+                throw new Error('Approval expired or used.');
+              this.remove('approval:' + String(body.approvalToken));
+            }
+          }
           const count = (this.get<number>('counter') ?? 0) + 1;
           this.put('counter', count);
           const id = 'BARN-' + String(count).padStart(3, '0');
@@ -239,6 +308,7 @@ export class Restaurant extends DurableObject<Env & Secrets> {
             requestId: body.requestId,
             createdAt: Date.now(),
             status: 'NEW',
+            paymentStatus: 'unconfirmed',
           };
           this.put('order:' + id, order);
           this.put(key, id);
@@ -256,49 +326,92 @@ export class Restaurant extends DurableObject<Env & Secrets> {
         return json(orders.map(({ customer, ...order }) => order));
       }
       if (path === '/api/celebration' && method === 'GET') {
-        if (!this.env.GIPHY_API_KEY) return json({ url: null });
-        try {
-          const result = await fetch(
-            `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(this.env.GIPHY_API_KEY)}&q=happy+food&rating=g&limit=1`,
-            { signal: AbortSignal.timeout(3000) },
-          );
-          const data = (await result.json()) as {
-            data?: { images?: { fixed_height?: { url?: string } } }[];
-          };
-          const gif = data.data?.[0]?.images?.fixed_height?.url;
-          return json({ url: gif?.startsWith('https://') ? gif : null });
-        } catch {
-          return json({ url: null });
-        }
+        return json(await celebrationResponse(this.env));
       }
       if (!session.employee) return json({ error: 'Employee authorization required.' }, 401);
+      if (path === '/api/integrations' && method === 'GET')
+        return json(integrationStatus(this.env));
+      if (path === '/api/promotion-redemptions' && method === 'GET') {
+        const records = this.ctx.storage.sql
+          .exec<{ value: string }>("SELECT value FROM records WHERE key LIKE 'order:%'")
+          .toArray()
+          .map((r) => JSON.parse(r.value) as Order);
+        return json(
+          records
+            .filter((o) => o.offerId)
+            .map((o) => ({
+              order: o.id,
+              offer: o.promotion,
+              discount: o.discount,
+              createdAt: o.createdAt,
+            })),
+        );
+      }
+      if (path === '/api/promotion-approval' && method === 'POST') {
+        const body = await read();
+        const offer = this.settings().offers?.find(
+          (o) => o.id === body.offerId && o.enabled && o.eligibility === 'manager',
+        );
+        if (!offer || typeof body.customer !== 'string' || !/^[a-f0-9-]{36}$/.test(body.customer))
+          throw new Error('Choose a manager offer and enter the customer approval request ID.');
+        const token = crypto.randomUUID();
+        this.put('approval:' + token, {
+          offer: offer.id,
+          customer: body.customer,
+          expires: Date.now() + 10 * 60000,
+        });
+        return json({ token });
+      }
       if (path === '/api/settings' && method === 'POST') {
         const body = await read(),
           s = this.settings();
+        if (body.seasonal !== undefined) {
+          if (
+            !body.seasonal ||
+            typeof body.seasonal !== 'object' ||
+            Array.isArray(body.seasonal) ||
+            !Object.keys(body.seasonal).some((key) => key in defaultSeasonal)
+          )
+            throw new Error('Invalid seasonal settings.');
+          const next = { ...defaultSeasonal, ...s.seasonal };
+          for (const key of Object.keys(defaultSeasonal) as (keyof typeof defaultSeasonal)[]) {
+            if (body.seasonal[key] !== undefined) {
+              if (typeof body.seasonal[key] !== 'boolean')
+                throw new Error('Invalid decoration setting.');
+              next[key] = body.seasonal[key];
+            }
+          }
+          s.seasonal = next;
+        }
+        if (body.announcements !== undefined) {
+          if (body.revision !== s.revision)
+            return json(
+              { error: 'Settings changed. Reload published announcements before saving.' },
+              409,
+            );
+          s.announcements = validateAnnouncements(body.announcements);
+        }
+        if (body.offer !== undefined) {
+          const previous = s.offers?.find((o) => o.id === body.offer.id);
+          const offer = await validateOffer(body.offer, previous);
+          if (this.settings().revision !== s.revision)
+            return json({ error: 'Settings changed. Reload and try again.' }, 409);
+          s.offers = [...(s.offers ?? []).filter((o) => o.id !== offer.id), offer];
+        }
         if (typeof body.open === 'boolean') s.open = body.open;
         if (typeof body.promotions === 'boolean') s.promotions = body.promotions;
-        if (body.item) {
-          const item = currentMenu(s).find((i) => i.id === body.item.id);
-          if (!item) throw new Error('Unknown menu item.');
-          const change: { price?: number; available?: boolean } = { ...s.overrides[item.id] };
-          if (typeof body.item.available === 'boolean') change.available = body.item.available;
-          if (body.item.price !== undefined) {
-            if (item.price === null)
-              throw new Error('Custom requests require individual employee quotes.');
-            if (
-              !Number.isInteger(body.item.price) ||
-              body.item.price < 50 ||
-              body.item.price > 100000
-            )
-              throw new Error('Price must be between $0.50 and $1,000.00.');
-            change.price = body.item.price;
-          }
-          s.overrides[item.id] = change;
+        if (body.item || body.createItem || body.removeItem) {
+          if (body.revision !== undefined && body.revision !== s.revision)
+            return json(
+              { error: 'The menu changed on another station. Reload the editor and try again.' },
+              409,
+            );
+          changeMenu(s, body);
         }
         s.revision++;
         this.put('settings', s);
         this.emit();
-        return json(s);
+        return json({ ok: true });
       }
       if (path.startsWith('/api/orders/') && method === 'PATCH') {
         const id = decodeURIComponent(path.split('/').pop()!),

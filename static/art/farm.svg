@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" role="img" aria-labelledby="title desc">
+<title id="title">Life by the Farm — Haven Hill Farm</title><desc id="desc">A red barn and cream farmhouse beyond rolling green pastures, with horses, cows, goats, sheep and chickens beside an autumn tree and wooden fence.</desc>
+<defs>
+ <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#d6e5d4"/><stop offset="1" stop-color="#fff0c9"/></linearGradient>
+ <linearGradient id="grass" x2="0" y2="1"><stop stop-color="#91ab66"/><stop offset="1" stop-color="#355d40"/></linearGradient>
+ <g id="tree"><path d="M0 0l-6 105h20L6 0" fill="#785331"/><circle cy="-25" r="48" fill="#b16a31"/><circle cx="-25" cy="-45" r="34" fill="#d49c3f"/><circle cx="25" cy="-48" r="35" fill="#c77732"/></g>
+ <g id="horse" stroke="#68472e" stroke-width="9" stroke-linecap="round"><path d="M-36 10l-5 51m24-48l5 48m29-49l9 48m-59-63l-22 13"/><ellipse rx="48" ry="26" fill="#ae7745" stroke-width="2"/><path d="M24-9l15-43 24 3 9 18-23 11-9 29" fill="#ae7745" stroke-width="2"/><path d="M39-49l-4-17 12 14m2 5l-9 24" stroke-width="7"/><circle cx="59" cy="-43" r="3" fill="#243b2c" stroke="none"/></g>
+ <g id="cow" stroke="#424638" stroke-width="7" stroke-linecap="round"><path d="M-30 16v36m20-28v28m30-28v28m13-38v38"/><ellipse rx="45" ry="28" fill="#f6efda" stroke-width="2"/><path d="M-25-17q-25 9-5 29t21-15m32-19q-18 12-1 24t22-7" fill="#3c493b" stroke="none"/><ellipse cx="41" cy="-2" rx="20" ry="24" fill="#f6efda" stroke-width="2"/><ellipse cx="45" cy="11" rx="18" ry="10" fill="#d3a38a" stroke="none"/><path d="M28-23l-7-14m29 16l9-15" stroke-width="4"/><circle cx="36" cy="-7" r="3" fill="#243b2c" stroke="none"/></g>
+ <g id="sheep" stroke="#594c38" stroke-width="6" stroke-linecap="round"><path d="M-20 14v30m34-26v26"/><path d="M-32 0a15 15 0 0 1 12-23 17 17 0 0 1 28-6 18 18 0 0 1 27 17 20 20 0 0 1-4 32 23 23 0 0 1-37 0 20 20 0 0 1-26-20" fill="#fff6df" stroke="#e4d7b9" stroke-width="3"/><ellipse cx="28" cy="-3" rx="13" ry="20" fill="#675847" stroke="none"/><circle cx="31" cy="-7" r="2" fill="#fff" stroke="none"/></g>
+ <g id="goat" stroke="#7c7154" stroke-width="6" stroke-linecap="round"><path d="M-21 11l-5 35m38-32l5 32m6-56l-7-22m18 22l8-21"/><ellipse rx="32" ry="21" fill="#d4c5a1" stroke-width="2"/><path d="M17-8l9-24 19 5 1 23-19 11" fill="#d4c5a1" stroke-width="2"/><path d="M34-1l-3 17 10-16" fill="#887951" stroke="none"/><circle cx="38" cy="-19" r="2.5" fill="#283b29" stroke="none"/></g>
+ <g id="hen"><path d="M-7 10v15m15-15v15" stroke="#b88936" stroke-width="4"/><ellipse rx="20" ry="16" fill="#f5e0b2"/><circle cx="14" cy="-14" r="10" fill="#f5e0b2"/><path d="M10-23l1-9 6 7 5-7 3 13" fill="#b24e35"/><path d="M23-16l12 5-12 4" fill="#c49436"/><circle cx="18" cy="-16" r="2" fill="#263b28"/><path d="M-15-3l-17-19 3 26" fill="#b47d39"/></g>
+</defs>
+<rect width="1000" height="760" rx="28" fill="url(#sky)"/><circle cx="790" cy="116" r="62" fill="#ffe5a2"/>
+<g fill="#fff9e8" opacity=".8"><ellipse cx="155" cy="105" rx="105" ry="22"/><ellipse cx="552" cy="68" rx="95" ry="18"/></g>
+<path d="M0 330Q230 170 475 310T1000 260V760H0Z" fill="#a7b87c"/><path d="M0 390Q280 275 530 365T1000 342V760H0Z" fill="url(#grass)"/>
+<g transform="translate(535 195)"><path d="M0 90V5L90-55 180 5V90" fill="#a65439"/><path d="M-15 9L90-69 195 9" fill="none" stroke="#3c4d37" stroke-width="16"/><path d="M60 90V18h60v72" fill="#5d3c2e" stroke="#f2ddb0" stroke-width="5"/><path d="M63 22l54 65m0-65L63 87" stroke="#dcbf88" stroke-width="3"/><rect x="80" y="-32" width="23" height="25" fill="#f3d394"/></g>
+<g transform="translate(305 215)"><rect width="140" height="95" fill="#f6e9c8"/><path d="M-14 0l83-60 84 60" fill="#3e5943"/><rect x="53" y="39" width="30" height="56" fill="#9a713c"/><path d="M17 20h22v27H17zm84 0h22v27h-22z" fill="#719188" stroke="#c4b084" stroke-width="4"/><path d="M-4 69h146" stroke="#ae8c58" stroke-width="6"/></g>
+<use href="#tree" x="126" y="260"/><use href="#tree" x="894" y="235"/><use href="#tree" x="49" y="430" transform="translate(-10 -40) scale(1.2)"/>
+<path d="M380 760q80-220 8-444l48-5q50 200 170 449" fill="#c6b780" opacity=".8"/>
+<use href="#horse" x="216" y="399"/><use href="#horse" transform="translate(321 370) scale(.65)"/>
+<use href="#cow" x="734" y="420"/><use href="#cow" transform="translate(861 390) scale(.7)"/>
+<use href="#goat" x="631" y="517"/><use href="#goat" transform="translate(719 547) scale(.7)"/>
+<use href="#sheep" x="184" y="552"/><use href="#sheep" x="276" y="574"/><use href="#sheep" transform="translate(223 614) scale(.65)"/>
+<use href="#hen" x="523" y="628"/><use href="#hen" x="577" y="652"/><use href="#hen" transform="translate(480 677) scale(.65)"/>
+<g stroke="#bc9660" stroke-width="12" fill="none"><path d="M0 637l350 65m300-6l350-70M0 677l350 65m300-6l350-70"/><path d="M35 613v116m100-97v116m100-95v110m100-92v110m336-106v110m100-130v110m100-130v110m100-127v110"/></g>
+<g fill="#dfa43c"><path d="M101 439l9-17 14 13-13 14zm693 165l14-18 12 22-19 9zm-418-74l8-18 15 11-11 20z"/></g>
+<g transform="translate(650 662)"><rect width="255" height="62" rx="7" fill="#805a35" stroke="#d5b474" stroke-width="4"/><text x="128" y="27" text-anchor="middle" fill="#fff0c8" font-family="serif" font-size="19">HAVEN HILL FARM</text><text x="128" y="48" text-anchor="middle" fill="#e2c17b" font-family="sans-serif" font-size="13">GOOD FOOD · WARM WELCOMES</text></g>
+</svg>

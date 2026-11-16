@@ -183,3 +183,85 @@ The code is prepared for one Cloudflare Worker with static assets and a SQLite D
 When Caleb chooses to deploy: validate the build and Worker dry run, set the real `EMPLOYEE_CODE` with Cloudflare’s secret mechanism, optionally set `GIPHY_API_KEY`, deploy the Worker and its v1 Durable Object migration, and open both stations at the same HTTPS workers.dev address or custom domain. Run the two-iPad checklist before using it for real orders. Do not deploy a public employee station with the synthetic test fixture.
 
 No deployment or account mutation was performed. Caleb manages GitHub separately; no GitHub setup is required by the app and none was configured.
+
+### Staff-managed items and Specials
+
+Open **Settings**, unlock employee access, then choose **Menu Manager**. This is the full editor for names, descriptions/ingredients, categories, fixed prices, Special labels, availability, and confirmed removal. **Price Manager** remains a quick-price view of the same saved menu.
+
+To add your two specials, use **Add menu item** for each, enter its real details and dollar price, select a category, check **Mark as a Special**, check **Enabled on customer menu**, and save. New items start disabled. No new specials are seeded automatically. Repeat this workflow for additional items without changing code.
+
+Specials appear live alongside the illustrated menu and in the ordering menu's **Specials** filter. The original artwork is unchanged; its printed listings cannot reflect live availability or price edits. Live ordering uses current server values. A Special label does not change promotion eligibility: the existing category and kids-menu rules still apply. The Specials category itself is not eligible for category bundles. Existing employee-priced custom requests retain per-order pricing.
+
+Use **Edit** to update details or availability, or the availability button for a quick toggle. **Remove** requires confirmation and leaves submitted orders intact. All changes use the existing Durable Object settings record and realtime refresh messages. A reviewed basket must be reviewed again after a menu change; unavailable or removed items cannot be newly ordered. No Cloudflare migration or configuration change is required.
+
+### Thanksgiving grand opening kiosk (November 26, 2026)
+
+The current welcome scene is Haven Hill Farm. Existing menu artwork, icons, order history, GIPHY integration and Cloudflare configuration remain intact. The welcome **Order Here** button opens live ordering; **View Menu** opens the illustrated menu. Eight suggested Thanksgiving items are disabled drafts, with descriptions that explicitly require management to confirm recipes and ingredients. They are not published products until staff enables them. Seasonal visibility defaults to **Order Here only**.
+
+In **Settings → Seasonal Management**, use the theme toggles and preview, then edit the draft rows using the existing item editor. Review descriptions/ingredients and prices, choose **Order Here**, **View Menu**, or **Both**, then enable and save. Menu Manager continues to edit all items. Static pictures retain their printed content; live cards and checkout use server prices/availability. Thanksgiving mode controls the welcome banner, decorations have a separate toggle, and seasonal animation respects reduced-motion preferences.
+
+Promotion controls live in the same management section. Existing three bundle formulas are retained, but the old customer promotion selector no longer grants access to them. No offer is redeemable until management explicitly creates/enables its eligibility rule and valid start/end dates. Select qualifying-cart, coupon, or manager approval requirements. Fixed credits, percentages and free-item offers require a qualifying item; all offers have a global redemption cap and can apply only once per customer session. Configure a cap of **1** for a truly single-use coupon. Anonymous sessions are not verified individual people: resetting cookies creates another identity, so a per-person/membership limit requires a real identity system. No membership implementation existed in this project; member-only rules deliberately remain unavailable.
+
+Coupon values are stored as server-side hashes; public settings expose only whether a code is configured. Coupon quote attempts are throttled. One offer can apply per order. The server recalculates cart requirements, dates and approval on every quote and submission; it rejects supplied discount/credit/membership claims, and consumes redemptions atomically with order creation. Lost-acknowledgement retries return the original order without another redemption. Redemptions can be reviewed by staff. Manager approval requires the customer's request ID shown during checkout and produces a customer-bound, one-use token lasting 10 minutes. There is no automatic staff approval.
+
+Checkout displays subtotal, verified discounts, masked applied-coupon reference and amount due. Submission creates an **unconfirmed** payment state; it does not collect or confirm payment. Customers deposit exact payment at the Payment Station and ring the bell only for change or assistance. This does not introduce a payment ledger or card processor.
+
+The service worker continues to exclude API/external requests and waits to activate. A ready-update notice asks users to finish checkout and close all app windows before reopening. After an approved deployment, open online, finish active orders, close every Caleb's PWA/Safari window, and reopen. If still on the old version, open online again to allow the new worker to install, then close and reopen once more. Never clear site data while an order acknowledgement is uncertain. Physical iPad installation/offline lifecycle still needs device testing.
+
+### Announcements and temporary weather pause
+
+Weather is intentionally hidden behind `weatherEnabled = false` in `src/lib/announcements.ts`. No Weather component is mounted on customer screens, including an old `#weather` bookmark. `Weather.svelte`, `worker/weather.ts`, `/api/weather` and the private OpenWeather configuration remain intact for a future explicitly requested restoration. This update does not repair or reactivate weather.
+
+The welcome panel now displays Restaurant Announcements with an **Explore Specials** button that opens the Thanksgiving ordering filter. Default messages include opening day, specials, mocktails, infused water, charging, member-card acceptance, thanks and the farm welcome. Member-card acceptance is informational signage supplied by the owner; this does not add a membership verification or payment-processing system.
+
+Use **Settings → Announcement Manager** to create/edit drafts, enable or disable messages, move them up/down, set optional icons/images and dates, and choose rotating, single, or seasonal-decoration display. **Save announcement draft** stages an edit; **Preview announcements** previews the staged list; **Publish announcements** makes the whole list live across stations. Delete requires confirmation and publishing. A stale publication is rejected so another staff device's changes are preserved; reload published announcements before retrying. Saved lists persist in the existing Durable Object settings record, including an empty list. Announcement defaults are initialized once for legacy settings rather than overwriting saved messages on updates.
+
+Rotation advances every eight seconds, with Next and Pause/Resume controls. It pauses for reduced-motion preferences and hidden pages. Optional images must use HTTPS or a local `/art/` asset; images are lazy-loaded, displayed as decoration, and hidden on load failure. Use optimized images under 200 KB where possible. External images are not fetched by the Worker or cached by the service worker.
+
+**Settings → Seasonal Management** independently controls turkey decorations, pumpkins, leaves, falling leaves, confetti, seasonal announcements, farm scenery and other decoration, alongside the existing Thanksgiving and master decoration/animation controls. **Lightweight graphics mode** chooses small SVG farm/turkey assets, omits optional announcement images and generic menu illustrations (the approved small product photos remain) and extra food decorations, reduces shadows and stops falling leaves. Reduced-motion always wins over animation settings. Decorative layers cannot capture touch input.
+
+New cohesive illustrations are stored in `static/art/farm-illustrated.webp`, `turkey.webp`, and `seasonal-table.webp`, totaling approximately 206 KB. They were generated for this project, cropped into separate assets and WebP-optimized. Existing menu artwork and icons remain untouched. Food illustrations are illustrative, not promises of ingredients for unreviewed draft products. Bundled art is included in the existing offline asset cache.
+
+### GIPHY configuration diagnostics
+
+**Settings → System Settings → Check GIPHY configuration on this server** asks a staff-only endpoint about the Worker serving the current origin. Empty, whitespace-only, quoted-empty and recognized placeholder values report **Not Configured** and never trigger a GIPHY request. A nonempty value reports **Configured (not verified)**; presence is not provider authorization. No key or key fragment is returned. GIPHY remains optional and provider failures still produce no GIF without blocking order confirmation.
+
+Local `npm run dev` uses Wrangler's `.dev.vars` (or its selected environment/explicit env file); the deployed app uses Cloudflare Worker bindings/secrets. A Cloudflare `secret list` entry proves only that a secret **name** exists, not that its value is useful. Production does not read your desktop `.dev.vars` at runtime. Changing a local file does not change a deployed secret. Restart local development after editing local configuration before comparing statuses. This diagnostic does not read or verify another origin's environment, modify secrets, or make a provider request.
+
+### Approved Thanksgiving specials and deals
+
+The approved live seasonal catalog now contains Gobble Bites (six nuggets, $4), Grilled Cheese Bites (half a grilled cheese cut into bite-sized pieces, $2), Thankful Snack Cup (small popcorn/cheddar-square mix, $1.75), Harvest Crunch Cup (apple slices with cheddar squares, $2), Golden Gobbler (pineapple/orange/ginger beer, $3.75), and Autumn Mini Sparkler (smaller lavender/ginger-beer mocktail, $3.50). These nine approved products, including the deals below, start enabled and Order Here-only. Ordinary menu prices are unchanged.
+
+- Gobble & Sip: Gobble Bites + Golden Gobbler, $7.
+- Little Thanksgiving Combo: Grilled Cheese Bites + Autumn Mini Sparkler, $5.
+- ULTIMATE THANKSGIVING DEAL: Gobble Bites + Grilled Cheese Bites + Golden Gobbler + small popcorn, $10.
+
+Deals are fixed-content purchasable products, not customer-granted discounts. The shared server quote validates every component, disallows an unavailable/removed/menu-only component, records the component names and counts in the order snapshot, and charges the lower of the configured deal price or separate component total. The small popcorn in ULTIMATE uses the regular popcorn catalog entry as its availability dependency and price comparison, with its serving explicitly recorded as Small popcorn. An additional promotion cannot stack onto an order containing a deal. Existing employee editing/availability/removal controls apply. Legacy unreviewed Thanksgiving draft IDs remain retired for data compatibility and cannot be re-enabled; past orders are untouched. No cider, ginger ale, cranberry or lime recipes were added.
+
+Each approved item uses a distinct real stock-food reference photo or a panel combining real component photographs. Photos are optimized WebP, kept separate from item text, letterboxed rather than cutting content to fit, and credited at `/special-photo-credits.html`. These photos are not actual Caleb's servings. One outstanding visual limitation is the Grilled Cheese Bites photo: it is a real grilled-cheese-halves reference, not an actual chopped-bites photo. Replace it with an owner-supplied serving photo when available; no synthetic chopped-food image was generated. The item name, portion and description already specify bite-sized pieces.
+
+### Active Thanksgiving 2026 menu artwork
+
+The viewer now uses `static/menus/main-menu-front-thanksgiving-2026.png`, `main-menu-back-thanksgiving-2026.png`, and `kids-menu-thanksgiving-2026.png`. The original three PNGs remain unchanged as backups. All six files retain their supplied 1024×1536 resolution. Static menu images are picked up automatically by the existing service-worker asset cache; no cache policy change is required. Artwork selection is independent of decoration mode.
+
+Catalog synchronization is now owner-approved: Turkey Slider ($4.75), Mashed Potato Cup ($3.75), Butter Corn Cup ($3), Harvest Sparkle ($4.75), Pumpkin Pie Mocktail ($4.50), and Fruit Sorbet ($2) are orderable. The five Thanksgiving dishes/drinks have separate main/kids entries. Printed legacy promotions still depend on management-controlled server eligibility rules. Cherry Pop has no lime juice; a visible home/menu correction explains the outdated printed ingredient list.
+
+
+### Approved artwork-to-catalog additions
+
+All three Thanksgiving PNGs were compared with the catalog. The front/back ordinary foods, drinks, mocktails, Chef CJ’s Special/Featured Special, existing seasonal items and three Thanksgiving deals retain their prices and ordering paths. The kids page's five extra seasonal items are now enabled in both main and kids ordering, with separate editable IDs:
+
+| Item | Category | USD price | Description |
+| --- | --- | --- | --- |
+| Turkey Slider | Bites | $4.75 | Turkey, cheese, and a soft bun. |
+| Mashed Potato Cup | Bites | $3.75 | Creamy and smooth! |
+| Butter Corn Cup | Bites | $3.00 | Warm and tasty! |
+| Harvest Sparkle | Mocktails | $4.75 | Ginger beer, orange syrup and a touch of honey syrup. Alcohol-free. |
+| Pumpkin Pie Mocktail | Mocktails | $4.50 | Creamy vanilla and honey syrup with a spiced pumpkin flavor. Alcohol-free. |
+| Fruit Sorbet | Desserts, main menu | $2.00 | Served in a real fruit shell. |
+
+Fruit Sorbet uses a new ID; the old Kirkland bar ID is disabled and hidden from staff/customer menus rather than being reassigned, preserving old order snapshots and rejecting stale bar baskets. All other products and original menu PNGs are retained. Both Cherry Pop entries now say lemon-lime soda, cherry syrup and cherry juice, with an explicit no-lime-juice clarification. Original artwork is not edited or blacked out; the home and menu pages show the correction.
+
+The new main Bites/Mocktails and Fruit Sorbet can qualify for the existing configured promotion recipes. Kids entries remain excluded from main-menu bundles. The original recipes and manager-controlled eligibility/expiry/redemption checks are unchanged; no checkout discount was enabled automatically. Staff can edit names/descriptions/categories/prices/availability in Menu Manager, and the kids seasonal filter is now visible. All prices are integer cents and all order quotes are computed on the Worker. New stock photos are optimized, representative food-type references, not promises of exact portions, garnish or recipes; the catalog text controls actual ingredients. Attribution remains at `/special-photo-credits.html`. No additional recipes, prices or ingredient substitutions were inferred from stock imagery.
+
+No additional numeric price conflicts were found across the three supplied PNGs. Chef’s Featured Special is the existing Chef CJ’s Special, not a duplicate unpriced product. Printed offers still require their configured eligibility; they are not unconditional checkout discounts. Sorbet flavor and the exact vanilla/pumpkin preparation are not specified beyond the owner's supplied wording and should be confirmed by staff rather than invented.

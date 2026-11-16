@@ -1,3 +1,4 @@
+import { seasonalDrafts } from './seasonal';
 import type { MenuItem, Settings } from './types';
 const item = (
   id: string,
@@ -21,7 +22,9 @@ export const menu: MenuItem[] = [
   item('cookies', 'Cookies', 250, 'Desserts', '🍪', 'Soft, sweet, and delicious!'),
   item('icecream', 'Vanilla Ice Cream', 275, 'Desserts', '🍨', 'Classic and creamy!'),
   item('johnny', 'Johnny Pop', 150, 'Desserts', '🍧', 'A refreshing frozen treat!'),
-  item('bar', 'Kirkland Ice Cream Bar', 200, 'Desserts', '🍫', 'Chocolatey and delicious!'),
+  item('fruit-sorbet', 'Fruit Sorbet', 200, 'Desserts', '🍨', 'Served in a real fruit shell.', {
+    image: '/art/specials/fruit-sorbet.webp',
+  }),
   item(
     'surprise',
     'Surprise Mocktail',
@@ -77,7 +80,7 @@ export const menu: MenuItem[] = [
     400,
     'Mocktails',
     '🍒',
-    'Lemon-lime soda, cherry syrup, cherry juice, lime juice',
+    'Lemon-lime soda, cherry syrup, cherry juice. No lime juice.',
   ),
   item('tea', 'Iced Tea', 250, 'Drinks', '🧋', 'Freshly brewed!', {
     options: ['Sweet', 'Unsweet'],
@@ -153,6 +156,18 @@ menu.push(
     { kids: true },
   ),
 );
+menu.push(
+  item(
+    'bar',
+    'Kirkland Ice Cream Bar',
+    200,
+    'Desserts',
+    '🍫',
+    'Replaced by Fruit Sorbet; retained for order-history compatibility.',
+    { available: false, retired: true },
+  ),
+);
+
 export const defaultSettings: Settings = {
   open: true,
   revision: 1,
@@ -160,10 +175,36 @@ export const defaultSettings: Settings = {
   promotions: true,
 };
 export function currentMenu(settings: Settings) {
-  return menu.map((i) => ({
-    ...i,
-    available: true,
-    ...settings.overrides[i.id],
-    price: i.price === null ? null : (settings.overrides[i.id]?.price ?? i.price),
-  }));
+  const resolved = [...menu, ...seasonalDrafts, ...(settings.additions ?? [])]
+    .filter((i) => !settings.removed?.includes(i.id))
+    .map((i) => ({
+      ...i,
+      available: i.available ?? true,
+      special: i.special ?? i.category === 'Specials',
+      ...settings.overrides[i.id],
+      price: i.price === null ? null : (settings.overrides[i.id]?.price ?? i.price),
+    }));
+  return resolved.map((i) => {
+    if (i.retired) return { ...i, available: false };
+    if (!i.bundle) return i;
+    const parts = i.bundle.map((part) => ({
+      part,
+      item: resolved.find((candidate) => candidate.id === part.id),
+    }));
+    const available =
+      i.available !== false &&
+      parts.every(
+        ({ item }) =>
+          item &&
+          item.available !== false &&
+          item.visibility !== 'menu' &&
+          item.price !== null &&
+          !item.bundle,
+      );
+    const separate = parts.reduce(
+      (sum, { part, item }) => sum + (item?.price ?? 0) * part.quantity,
+      0,
+    );
+    return { ...i, available, price: Math.min(i.price ?? separate, separate) };
+  });
 }

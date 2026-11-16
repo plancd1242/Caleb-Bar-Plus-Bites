@@ -1,10 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import type { CartLine, MenuItem, Order, Promotion, Quote, Settings } from '$lib/types';
   import { quote, money } from '$lib/pricing';
   import { api } from '$lib/api';
+  import { seasonalSettings } from '$lib/seasonal';
   import Icon from './Icon.svelte';
   export let menu: MenuItem[];
+  export let initialSeasonal = false;
+  export let initialSpecial: MenuItem | null = null;
+  export let onSpecialHandled: () => void = () => {};
   export let settings: Settings;
   export let cart: CartLine[];
   export let navigate: (page: string) => void;
@@ -18,7 +22,42 @@
   let category = 'All';
   let step = 1;
   let name = '';
-  let promotion: Promotion = 'best';
+  let promotion: Promotion = 'none';
+  let offerId = '';
+  let coupon = '';
+  let approvalToken = '';
+  let customerId = '';
+  let additions: { id: number; item: string }[] = [];
+  let additionId = 0;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  function ordered(item: MenuItem) {
+    const id = ++additionId;
+    additions = [...additions, { id, item: item.id }];
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document
+        .querySelector<HTMLButtonElement>('[data-add-id="' + CSS.escape(item.id) + '"]')
+        ?.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }],
+          { duration: 200 },
+        );
+    }
+    const timer = setTimeout(() => {
+      additions = additions.filter((a) => a.id !== id);
+      timers.delete(timer);
+    }, 1000);
+    timers.add(timer);
+  }
+  onDestroy(() => timers.forEach(clearTimeout));
+  $: seasonalItems = visible.filter((i) => i.seasonal);
+  $: regularItems = visible.filter((i) => !i.seasonal);
+  $: activeOffers = (settings.offers ?? []).filter(
+    (o) =>
+      settings.promotions &&
+      o.enabled &&
+      o.eligibility !== 'member' &&
+      Date.now() >= Date.parse(o.starts) &&
+      Date.now() < Date.parse(o.expires),
+  );
   let error = '';
   let busy = false;
   let quoteData: Quote | null = null;
@@ -27,26 +66,48 @@
   let option = '';
   let requestId = '';
   let pending = false;
-  const categories = ['All', 'Bites', 'Mocktails', 'Desserts', 'Drinks', 'Specials', 'Custom'];
+  $: theme = seasonalSettings(settings.seasonal);
+  const categories = [
+    'All',
+    'Thanksgiving Specials',
+    'Bites',
+    'Mocktails',
+    'Desserts',
+    'Drinks',
+    'Specials',
+    'Custom',
+  ];
   $: visible = menu.filter(
-    (i) => Boolean(i.kids) === kids && (category === 'All' || i.category === category),
+    (i) =>
+      i.available !== false &&
+      i.visibility !== 'menu' &&
+      Boolean(i.kids) === kids &&
+      (category === 'All' ||
+        (category === 'Thanksgiving Specials'
+          ? i.seasonal
+          : category === 'Specials'
+            ? i.special || i.category === 'Specials'
+            : i.category === category)),
   );
   $: preview = (() => {
     try {
-      return quote(cart, menu, settings.promotions ? promotion : 'none', settings.revision);
+      return quote(cart, menu, 'none', settings.revision);
     } catch {
       return null;
     }
   })();
+  $: stale = !!quoteData && quoteData.revision !== settings.revision;
   $: count = cart.reduce((s, l) => s + l.quantity, 0);
   onMount(() => {
+    void api<{ customer: string }>('/session')
+      .then((s) => (customerId = s.customer))
+      .catch(() => {});
     try {
       const saved = JSON.parse(localStorage.getItem('barn-checkout') ?? 'null');
       if (saved) {
         name = typeof saved.name === 'string' ? saved.name.slice(0, 60) : '';
-        promotion = ['best', 'none', 'sip', 'bogo', 'ultimate'].includes(saved.promotion)
-          ? saved.promotion
-          : 'best';
+        promotion = 'none';
+        offerId = typeof saved.offerId === 'string' ? saved.offerId : '';
         requestId =
           typeof saved.requestId === 'string' && /^[a-f0-9-]{36}$/.test(saved.requestId)
             ? saved.requestId
@@ -56,15 +117,32 @@
     } catch {
       /* A damaged draft never blocks ordering. */
     }
+    if (initialSpecial) {
+      kids = !!initialSpecial.kids;
+      category = 'Specials';
+      const item = menu.find((i) => i.id === initialSpecial?.id && i.available !== false);
+      if (item && !pending) add(item);
+      onSpecialHandled();
+    }
+    if (initialSeasonal) {
+      kids = false;
+      category = 'Thanksgiving Specials';
+      onSpecialHandled();
+      void tick().then(() =>
+        document.getElementById('seasonal-specials')?.scrollIntoView({ block: 'start' }),
+      );
+    }
   });
   function change(lines: CartLine[]) {
     if (pending) return;
     error = '';
     quoteData = null;
+    cart = lines;
     onCart(lines);
+    return true;
   }
   function add(item: MenuItem) {
-    if (pending) return;
+    if (pending || item.available === false || item.visibility === 'menu') return;
     if (item.options || item.category === 'Custom') {
       selected = item;
       note = '';
@@ -72,10 +150,21 @@
     } else addLine(item, '', '');
   }
   function addLine(item: MenuItem, note: string, option: string) {
+    const current = menu.find((i) => i.id === item.id);
+    if (!current || current.available === false || current.visibility === 'menu') {
+      error = 'This item is no longer available.';
+      return;
+    }
+    if (pending || item.available === false || item.visibility === 'menu') return;
     const index = cart.findIndex((l) => l.id === item.id && l.note === note && l.option === option);
-    if (index >= 0) {
-      quantity(index, 1);
-    } else change([...cart, { id: item.id, quantity: 1, note, option }]);
+    if (index >= 0 && cart[index].quantity >= 20) {
+      error = 'Maximum 20 of each item.';
+      return;
+    }
+    const next = cart.map((l) => ({ ...l }));
+    if (index >= 0) next[index].quantity++;
+    else next.push({ id: item.id, quantity: 1, note, option });
+    if (change(next)) ordered(item);
     selected = null;
   }
   function quantity(index: number, delta: number) {
@@ -89,8 +178,15 @@
   }
   async function review() {
     error = '';
+    quoteData = null;
     try {
-      quoteData = await api<Quote>('/quote', { cart, promotion });
+      quoteData = await api<Quote>('/quote', {
+        cart,
+        promotion: 'none',
+        offerId,
+        coupon,
+        approvalToken,
+      });
       step = 2;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Couldn’t check your basket. Your items are saved.';
@@ -98,13 +194,20 @@
   }
   function saveDraft() {
     try {
-      localStorage.setItem('barn-checkout', JSON.stringify({ name, promotion, requestId }));
+      localStorage.setItem(
+        'barn-checkout',
+        JSON.stringify({ name, promotion, requestId, offerId }),
+      );
     } catch {
       error = 'Device storage is unavailable. Keep this page open until your order is confirmed.';
     }
   }
   async function submit() {
     if (busy) return;
+    if (!pending && stale) {
+      error = 'The menu changed. Review your basket again before sending.';
+      return;
+    }
     if (!quoteData || name.trim().length < 2) {
       error = 'Please enter a name with at least 2 characters.';
       return;
@@ -118,7 +221,10 @@
       const order = await api<Order>('/orders', {
         cart,
         name,
-        promotion,
+        promotion: 'none',
+        offerId,
+        coupon,
+        approvalToken,
         requestId,
         total: quoteData.total,
         revision: quoteData.revision,
@@ -159,6 +265,9 @@
   }
 </script>
 
+<div class="ordered-feedback" aria-live="polite" aria-atomic="false">
+  {#each additions as addition (addition.id)}<div class="ordered-toast">✓ Ordered!</div>{/each}
+</div>
 <div class="page-heading">
   <div>
     <p class="eyebrow">FRESHLY MADE. HAPPILY SHARED.</p>
@@ -181,6 +290,16 @@
   >
 </div>
 {#if error}<div class="notice error" role="alert">{error}</div>{/if}
+{#if stale && !pending}<div class="notice" role="alert">
+    The menu changed. Review your basket again to confirm current prices and availability.
+    <button
+      class="secondary"
+      onclick={() => {
+        quoteData = null;
+        step = 1;
+      }}>Review updated basket</button
+    >
+  </div>{/if}
 {#if pending}<div class="notice">
     This order may already be on its way. Retry with the same order details, or <button
       class="text-button"
@@ -215,54 +334,122 @@
         >
       </div>
       <div class="category-tabs">
-        {#each categories.filter((c) => !kids || !['Desserts', 'Specials'].includes(c)) as c}<button
+        {#each categories.filter((c) => !kids || !['Desserts'].includes(c)) as c}<button
             class:active={category === c}
             onclick={() => (category = c)}>{c}</button
           >{/each}
       </div>
-      <div class="item-grid">
-        {#each visible as item}<article class="item-card" class:soldout={item.available === false}>
-            <div class="food-art" class:berry={item.category === 'Mocktails'}>
-              <span>{item.emoji}</span><small
-                >{item.kids ? 'LITTLE FAVORITES' : item.category.toUpperCase()}</small
+      {#if category === 'Thanksgiving Specials' && !seasonalItems.length}<section
+          id="seasonal-specials"
+        >
+          <h2>🦃 Thanksgiving Grand Opening Specials</h2>
+          <p>Our seasonal menu is being prepared. Ask staff which specials are available.</p>
+        </section>{/if}
+      {#each [{ title: '🦃 Thanksgiving Grand Opening Specials', items: seasonalItems }, { title: '', items: regularItems }] as group}
+        {#if group.items.length}{#if group.title}<h2 id="seasonal-specials">{group.title}</h2>
+            <p>
+              Approved Thanksgiving portions and deals. Photos are representative; see descriptions
+              for exact servings. <a
+                href="/special-photo-credits.html"
+                target="_blank"
+                rel="noopener">Photo credits</a
               >
-            </div>
-            <div class="item-body">
-              <h3>{item.name}</h3>
-              <p>{item.description || 'A classic, refreshing choice.'}</p>
-              <div class="item-bottom">
-                <strong>{item.price === null ? 'Price to confirm' : money(item.price)}</strong
-                ><button
-                  class="add-button"
-                  aria-label={'Add ' + item.name}
-                  disabled={item.available === false || pending}
-                  onclick={() => add(item)}>{item.available === false ? 'Sold out' : '+'}</button
-                >
-              </div>
-            </div>
-          </article>{/each}
-      </div>
+            </p>{/if}
+          <div class="item-grid">
+            {#each group.items as item}<article
+                class="item-card"
+                class:soldout={item.available === false}
+              >
+                <div class="food-art" class:berry={item.category === 'Mocktails'}>
+                  {#if item.image || (!theme.lightweight && !item.seasonal && ['Bites', 'Mocktails', 'Desserts', 'Drinks'].includes(item.category))}<img
+                      class="menu-food-image"
+                      src={item.image ?? '/art/seasonal-table.webp'}
+                      alt={item.image
+                        ? item.name + ' — representative food photograph'
+                        : 'Seasonal food illustration'}
+                      loading="lazy"
+                      decoding="async"
+                      width="320"
+                      height="170"
+                    />{:else}<span>{item.emoji}</span>{/if}<small
+                    >{item.special
+                      ? 'SPECIAL'
+                      : item.kids
+                        ? 'LITTLE FAVORITES'
+                        : item.category.toUpperCase()}</small
+                  >
+                </div>
+                <div class="item-body">
+                  <h3>{item.name}</h3>
+                  <p>{item.description || 'A classic, refreshing choice.'}</p>
+                  {#if item.id === 'harvest-cheese-bites'}<small
+                      >Grilled cheese reference photo; your serving is cut into bite-sized pieces.</small
+                    >{/if}
+                  {#if item.bundle}<small class="deal-note"
+                      >Fixed contents · no extra promotion · lower separate price applies if cheaper</small
+                    >{/if}
+                  <div class="item-bottom">
+                    <strong>{item.price === null ? 'Price to confirm' : money(item.price)}</strong
+                    ><button
+                      data-add-id={item.id}
+                      class="add-button"
+                      class:just-added={additions.some((a) => a.item === item.id)}
+                      aria-label={'Add ' + item.name}
+                      disabled={item.available === false || pending}
+                      onclick={() => add(item)}
+                      >{item.available === false ? 'Sold out' : '+'}</button
+                    >
+                  </div>
+                </div>
+              </article>{/each}
+          </div>
+        {/if}
+      {/each}
     {:else if step === 2}<div class="panel">
         <p class="eyebrow">ONE MORE LOOK</p>
         <h2>Your happy little lineup.</h2>
         <p>Check your items on the right. Any custom prices will be confirmed by an employee.</p>
-        <label for="promotion">Pick your special</label><select
-          id="promotion"
-          bind:value={promotion}
-          disabled={pending || !settings.promotions}
-          onchange={review}
-          ><option value="best">Best single promotion — automatic</option><option value="none"
-            >No promotion</option
-          ><option value="sip">Sip & Share — save $3.50 per pair</option><option value="bogo"
-            >BOGO Mocktails — lesser price free</option
-          ><option value="ultimate">The Ultimate $10 Deal</option></select
+        <label for="offer">Available offers</label><select
+          id="offer"
+          bind:value={offerId}
+          disabled={pending}
+          onchange={() => {
+            quoteData = null;
+          }}
+        >
+          <option value="">No offer</option>{#each activeOffers as offer}<option value={offer.id}
+              >{offer.name}</option
+            >{/each}
+        </select>
+        {#if offerId}<p>Eligibility is checked by the server. Only one verified offer can apply.</p>
+          {#if activeOffers.find((o) => o.id === offerId)?.eligibility === 'coupon'}<label
+              for="coupon">Coupon code</label
+            ><input
+              id="coupon"
+              bind:value={coupon}
+              maxlength="100"
+              disabled={pending}
+              oninput={() => (quoteData = null)}
+            />{/if}
+          {#if activeOffers.find((o) => o.id === offerId)?.eligibility === 'manager'}<p>
+              Show staff your approval request ID: <code>{customerId}</code>
+            </p>
+            <label for="approval-token">Manager approval token</label><input
+              id="approval-token"
+              bind:value={approvalToken}
+              maxlength="100"
+              disabled={pending}
+              oninput={() => (quoteData = null)}
+            />{/if}
+        {/if}
+        <button class="secondary" disabled={busy || pending} onclick={review}
+          >Verify offer and total</button
         >
         <p class="fine-print">
-          Main-menu bites, mocktails, and desserts qualify. Kids items and custom requests are
-          excluded. One promotion type per order; complete groups may repeat. We automatically
-          choose the biggest saving.
+          Unconfigured and member-only offers are unavailable. Coupons expire and cannot be stacked.
+          Changing your cart requires a new server review.
         </p>
-        <button class="primary wide" onclick={() => (step = 3)}
+        <button class="primary wide" disabled={!quoteData || stale} onclick={() => (step = 3)}
           >Looks good. Continue <Icon name="arrow" /></button
         ><button class="text-button" onclick={() => (step = 1)}>← Add a little more</button>
       </div>
@@ -280,14 +467,15 @@
           disabled={pending}
         />
         <div class="payment-note">
-          ♡ Pay your waiter after sending your order. No online payment needed.
+          Please deposit your exact payment at the Payment Station. Need change or assistance? Ring
+          the bell!
         </div>
         {#if quoteData?.pending}<div class="notice">
             Your total includes priced items only. Custom requests are submitted for an employee’s
             price confirmation.
           </div>{/if}<button
           class="primary wide"
-          disabled={busy || !settings.open || name.trim().length < 2}
+          disabled={busy || !settings.open || name.trim().length < 2 || (!pending && stale)}
           onclick={submit}
           >{busy ? 'Sending your order…' : pending ? 'Retry sending order' : 'Place order'}
           <Icon name="arrow" /></button
@@ -308,9 +496,10 @@
       </div>{:else}{#each cart as line, i}{@const item = menu.find((m) => m.id === line.id)}
         <div class="basket-line">
           <div>
-            <strong>{item?.name ?? 'Unavailable item'}</strong><small
-              >{line.option}{line.note ? ' · ' + line.note : ''}</small
-            ><small
+            <strong>{item?.name ?? 'Unavailable item'}</strong
+            >{#if !item || item.available === false}<small class="error"
+                >No longer available — remove from basket.</small
+              >{/if}<small>{line.option}{line.note ? ' · ' + line.note : ''}</small><small
               >{item?.price == null
                 ? 'Employee confirms price'
                 : money(item.price) + ' each'}</small
@@ -329,17 +518,18 @@
             >
           </div>
         </div>{/each}
-      {@const price = step > 1 ? quoteData : preview}{#if price}<div class="totals">
+      {@const price = step > 1 && quoteData ? quoteData : preview}{#if price}<div class="totals">
           <p><span>Subtotal</span><span>{money(price.subtotal)}</span></p>
-          {#if price.discount}<p class="savings">
-              <span>{price.promotion}</span><span>−{money(price.discount)}</span>
-            </p>{/if}
+          <p class="savings">
+            <span>Verified discount · {price.promotion}</span><span>−{money(price.discount)}</span>
+          </p>
           <p><span>Tax</span><span>$0.00</span></p>
           <p class="total">
-            <span>{price.pending ? 'Known total' : 'Total'}</span><strong
+            <span>{price.pending ? 'Known total' : 'Final amount due'}</span><strong
               >{money(price.total)}</strong
             >
           </p>
+          <small>Applied coupon: {price.coupon ?? 'None'}</small>
           {#if price.pending}<small>+ custom items awaiting an employee’s price</small>{/if}
         </div>{:else}<p class="error">
           An item changed or is sold out. Remove it before continuing.

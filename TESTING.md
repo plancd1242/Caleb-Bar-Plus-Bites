@@ -164,3 +164,30 @@ Checks performed for this branding-only change:
 - SHA-256 comparison verified menu images, ordering, employee controls, menu data, pricing, and backend files were unchanged. GitHub was not accessed.
 
 Only the icon generator was run (`node scripts/icons.mjs`); the menu-generating asset script was not executed. Physical Home Screen icon refresh on an already-installed iPad remains a device check; this change was verified in local browser previews.
+
+### Staff-managed Specials regression coverage
+
+`tests/menu-management.test.ts` covers legacy settings, integer-cent validation, saved-menu round trips, disable/re-enable/removal, immutable quote snapshots, and existing category-based promotions. `tests/e2e/specials.spec.ts` creates two synthetic specials only in the isolated local test server. It covers the staff editor, realtime customer visibility beside menu artwork, price changes during checkout, unavailable carts, re-enabling, saved data after reload and a new browser session, successful ordering, unauthorized mutations, stale staff edits, confirmed/cancelled removal, and retained receipts. Synthetic items are removed during cleanup and are never seeded into the app or production.
+
+### Grand opening security and kiosk verification
+
+`tests/promotions.test.ts` verifies rejection of direct/unknown promotion IDs, forged discount/credit/membership/stacking inputs, unconfigured/disabled/future/expired offers, wrong coupons, member-only rules, missing manager approval, redemption limits, cart changes, and all configured recipes. Original pricing tests continue to verify the bundle formulas independently of eligibility authorization.
+
+`tests/e2e/opening.spec.ts` verifies touch feedback at 999/1000 milliseconds, rapid consecutive additions and the existing quantity cap, portrait/landscape sizing, the farm scene, staff-only seasonal controls, default-hidden seasonal drafts, Order Here-only visibility, coupon hash redaction, server price checks, concurrent idempotent redemption, manager tokens bound to a customer, staff redemption review, and payment remaining unconfirmed. All test offers and menu edits use isolated synthetic local storage, never production. The existing offline/PWA, realtime, order recovery, menu editing, weather and optional-GIPHY fallback tests remain part of the complete suite.
+
+### Announcements follow-up
+
+`tests/announcements.test.ts` covers the disabled-weather flag, default messages, announcement validation, safe image sources, enabled/scheduled/seasonal filtering and legacy decoration defaults. `tests/e2e/announcements.spec.ts` covers zero weather requests, announcement rotation/pause, Explore Specials navigation, draft preview/publication, realtime sync, edit/delete/reordering, saved settings after refresh, staff access enforcement, independent decoration controls, lightweight SVG selection and portrait/landscape sizing. Existing weather endpoint/unit tests remain; customer UI tests now verify intentional hiding instead of exercising the disabled location controls.
+
+### Approved Thanksgiving catalog
+
+`tests/thanksgiving-menu.test.ts` covers the six approved products and three fixed-content deals, exact cent prices, ordinary-price preservation, retirement of old drafts, forbidden-recipe absence, component availability/removal, lower-price protection, authoritative component snapshots and promotion stacking rejection. `tests/e2e/thanksgiving-menu.spec.ts` checks enabled seasonal items, photo loading, complete readable names, the Grilled Cheese Bites description, a $7 deal checkout and Order Here-only visibility in Chromium/WebKit at iPad portrait size.
+
+### Thanksgiving 2026 menu asset switch
+
+Navigation tests assert the exact Thanksgiving front/back/kids PNG paths and successful 1024px image decoding in both engines. The Chromium offline-cache test verifies all three new paths are cached, then checks the front, flipped back and kids menu while offline. The original image files remain unchanged. Physical iPad/PWA update activation still needs device verification after an approved deployment.
+
+
+### Owner-approved Thanksgiving additions and dessert replacement
+
+`tests/menu-artwork-catalog.test.ts` audits the advertised main/kids items and prices against the catalog and server-shared quote function, including valid option/custom-request selection. It verifies the $2 Fruit Sorbet replacement, disabled old bar ID despite old overrides, corrected Cherry Pop descriptions/prices, and eligibility for configured BOGO, Sip & Share and Ultimate recipes with kids excluded. `tests/e2e/catalog-additions.spec.ts` orders all five kids additions together ($20.75), verifies decoded photos, checkout/receipt, staff editing and persistence of price/description, the lime-juice correction, and actual $2 Fruit Sorbet checkout with no old bar add button. Existing all-menu-image, touch, iPad layout, PWA, order-history, promo validation and authentication suites remain enabled.

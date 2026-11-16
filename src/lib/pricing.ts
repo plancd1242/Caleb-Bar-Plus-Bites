@@ -21,8 +21,23 @@ export function quote(
       throw new Error(`Choose an option for ${item.name}.`);
     if (item.category === 'Custom' && !line.note.trim())
       throw new Error('Describe your custom request.');
+    const contents = item.bundle?.map((part) => {
+      const component = menu.find((i) => i.id === part.id);
+      if (
+        !component ||
+        component.available === false ||
+        component.price === null ||
+        component.visibility === 'menu'
+      )
+        throw new Error('A deal item is no longer available. Please review your order.');
+      return { name: part.label ?? component.name, quantity: part.quantity };
+    });
     return {
-      ...line,
+      id: line.id,
+      quantity: line.quantity,
+      note: line.note,
+      option: line.option,
+      ...(contents ? { contents } : {}),
       name: item.name,
       price: item.price,
       category: item.category,

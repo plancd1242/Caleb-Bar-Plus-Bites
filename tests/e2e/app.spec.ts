@@ -41,7 +41,6 @@ test('welcome, every navigation, images, rapid flip protection and reduced motio
   for (const [label, heading] of [
     ['Main Menu', 'Good things on every page.'],
     ['Kids Menu', 'A little menu. A lot of fun.'],
-    ['Weather', 'The view looks good on you.'],
     ['Time', ''],
     ['Place Your Order', 'What sounds good?'],
     ['Welcome', 'Welcome to'],
@@ -51,7 +50,15 @@ test('welcome, every navigation, images, rapid flip protection and reduced motio
       await expect(page.getByRole('heading', { name: new RegExp(heading) })).toBeVisible();
   }
   await page.locator('.menu-card').click();
+  await expect(page.locator('.menu-face.front img')).toHaveAttribute(
+    'src',
+    '/menus/main-menu-front-thanksgiving-2026.png',
+  );
   await expect(page.locator('.menu-face.front img')).toHaveJSProperty('naturalWidth', 1024);
+  await expect(page.locator('.menu-face.back img')).toHaveAttribute(
+    'src',
+    '/menus/main-menu-back-thanksgiving-2026.png',
+  );
   await expect(page.locator('.menu-face.back img')).toHaveJSProperty('naturalWidth', 1024);
   await page.getByRole('button', { name: /Flip to back/ }).click();
   await expect(page.locator('.menu-flipper')).toHaveClass(/flipped/);
@@ -65,6 +72,10 @@ test('welcome, every navigation, images, rapid flip protection and reduced motio
   await expect(page.locator('.menu-flipper')).toHaveCSS('transform', 'none');
   await expect(page.locator('.menu-face.back')).toHaveCSS('opacity', '1');
   await page.getByRole('navigation').getByRole('button', { name: 'Kids Menu' }).click();
+  await expect(page.locator('.menu-face img')).toHaveAttribute(
+    'src',
+    '/menus/kids-menu-thanksgiving-2026.png',
+  );
   await expect(page.locator('.menu-face img')).toHaveJSProperty('naturalWidth', 1024);
   expect(errors).toEqual([]);
 });
@@ -107,7 +118,7 @@ test('customer submission, duplicate protection, isolated sessions, employee rea
   await expect(page.getByRole('button', { name: 'Place order', exact: true })).toBeDisabled();
   await page.getByLabel('Your name', { exact: true }).fill('Realtime Guest');
   await page.getByRole('button', { name: 'Place order', exact: true }).click();
-  await expect(page.getByText('ORDER SENT!', { exact: true })).toBeVisible();
+  await expect(page.getByText('✓ Order Submitted!', { exact: true })).toBeVisible();
   const orderId = await page.locator('.receipt-summary strong').first().innerText();
   expect(orderId).toMatch(/^BARN-\d+$/);
   await expect(employee.locator('.order-ticket').filter({ hasText: orderId })).toContainText(
@@ -130,7 +141,7 @@ test('customer submission, duplicate protection, isolated sessions, employee rea
   await page.reload();
   await expect(page.locator('.receipt-summary')).toContainText(orderId);
   await expect(
-    page.getByText('Please give your payment to your waiter.', { exact: true }),
+    page.getByText('Please deposit your exact payment at the Payment Station.', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Start another order' }).click();
   await expect(page.getByText('A little empty. For now.')).toBeVisible();
@@ -150,10 +161,10 @@ test('failure preserves basket; lost acknowledgement retries same order only onc
   });
   await page.getByRole('button', { name: 'Place order', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.getByText('ORDER SENT!', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('✓ Order Submitted!', { exact: true })).toHaveCount(0);
   await expect(page.locator('.basket')).toContainText('Chicken Bites');
   await page.getByRole('button', { name: 'Retry sending order' }).click();
-  await expect(page.getByText('ORDER SENT!', { exact: true })).toBeVisible();
+  await expect(page.getByText('✓ Order Submitted!', { exact: true })).toBeVisible();
   expect((await api(page, '/orders')).data).toHaveLength(1);
 });
 test('backend unavailable preserves basket and allows checked editing', async ({ page }) => {
@@ -203,7 +214,7 @@ test('menu availability, price editing, closed restaurant, custom pricing and se
   await row.getByRole('button', { name: 'Available', exact: true }).click();
   await expect(
     customer.getByRole('button', { name: 'Add Chicken Bites', exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await row.getByRole('button', { name: 'Sold out', exact: true }).click();
   await expect(
     customer.getByRole('button', { name: 'Add Chicken Bites', exact: true }),
@@ -236,7 +247,7 @@ test('menu availability, price editing, closed restaurant, custom pricing and se
   await customer.getByRole('button', { name: 'Looks good. Continue' }).click();
   await customer.getByLabel('Your name', { exact: true }).fill('Custom Guest');
   await customer.getByRole('button', { name: 'Place order', exact: true }).click();
-  await expect(customer.getByText('ORDER SENT!', { exact: true })).toBeVisible();
+  await expect(customer.getByText('✓ Order Submitted!', { exact: true })).toBeVisible();
   const id = await customer.locator('.receipt-summary strong').first().innerText();
   await page.getByRole('button', { name: 'Live Orders', exact: true }).click();
   const ticket = page.locator('.order-ticket').filter({ hasText: id });
@@ -278,9 +289,7 @@ test('server distrusts client totals, rejects invalid requests and enforces idem
   });
   expect(csrf.status()).toBe(403);
 });
-test('weather denial, API failure, missing image and optional celebration fallback', async ({
-  page,
-}) => {
+test('disabled weather, missing image and optional celebration fallback', async ({ page }) => {
   await page.addInitScript(() => {
     navigator.geolocation.getCurrentPosition = (_success, error) =>
       error?.({
@@ -292,8 +301,8 @@ test('weather denial, API failure, missing image and optional celebration fallba
       });
   });
   await nav(page, 'weather');
-  await page.getByRole('button', { name: 'Use my location' }).click();
-  await expect(page.getByText(/Location access is off/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Restaurant Announcements' })).toBeVisible();
   expect((await api(page, '/celebration')).data.url).toBeNull();
   await nav(page, 'kids');
   await page
@@ -301,7 +310,7 @@ test('weather denial, API failure, missing image and optional celebration fallba
     .evaluate((img: HTMLImageElement) => (img.src = '/menus/missing-menu.png'));
   await expect(page.getByText(/This menu image couldn’t load/)).toBeVisible();
 });
-test('weather network failure does not affect ordering', async ({ page }) => {
+test('disabled weather does not affect ordering', async ({ page }) => {
   await page.addInitScript(() => {
     navigator.geolocation.getCurrentPosition = (success) =>
       success({
@@ -319,8 +328,7 @@ test('weather network failure does not affect ordering', async ({ page }) => {
   });
   await page.route('**/api/weather?**', (r) => r.abort());
   await nav(page, 'weather');
-  await page.getByRole('button', { name: 'Use my location' }).click();
-  await expect(page.getByText(/Weather is unavailable/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
   await page.getByRole('navigation').getByRole('button', { name: 'Place Your Order' }).click();
   await expect(page.getByRole('button', { name: 'Add Chicken Bites', exact: true })).toBeEnabled();
 });
@@ -365,7 +373,7 @@ test('storage unavailable never prevents an acknowledged order', async ({ page }
   });
   await addAndReview(page);
   await page.getByRole('button', { name: 'Place order', exact: true }).click();
-  await expect(page.getByText('ORDER SENT!', { exact: true })).toBeVisible();
+  await expect(page.getByText('✓ Order Submitted!', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 test('corrupt saved drafts and missing optional logo fail gracefully', async ({ page }) => {
@@ -455,10 +463,27 @@ test.describe('Installed app cache', () => {
     await nav(page, 'main');
     await page.evaluate(() => navigator.serviceWorker.ready);
     await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+    for (const name of ['main-menu-front', 'main-menu-back', 'kids-menu']) {
+      const path = '/menus/' + name + '-thanksgiving-2026.png';
+      await expect
+        .poll(() => page.evaluate(async (path) => !!(await caches.match(path)), path))
+        .toBe(true);
+    }
     await context.setOffline(true);
     await page.reload();
     await expect(page.locator('.menu-face.front img')).toHaveJSProperty('naturalWidth', 1024);
     await expect(page.locator('.connection')).toContainText('Offline');
+    await page.getByRole('button', { name: /Flip to back/ }).click();
+    await expect(page.locator('.menu-face.back img')).toHaveJSProperty('naturalWidth', 1024);
+    await page
+      .getByRole('navigation')
+      .getByRole('button', { name: 'Kids Menu', exact: true })
+      .click();
+    await expect(page.locator('.menu-face img')).toHaveAttribute(
+      'src',
+      '/menus/kids-menu-thanksgiving-2026.png',
+    );
+    await expect(page.locator('.menu-face img')).toHaveJSProperty('naturalWidth', 1024);
     await page.getByRole('navigation').getByRole('button', { name: 'Place Your Order' }).click();
     await page.getByRole('button', { name: 'Add Chicken Bites', exact: true }).click();
     await page.reload();
@@ -468,7 +493,9 @@ test.describe('Installed app cache', () => {
   });
 });
 
-test('weather endpoint missing-key response and existing page fallback', async ({ page }) => {
+test('recoverable weather endpoint missing-key response and hidden customer UI', async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     navigator.geolocation.getCurrentPosition = (success) =>
       success({ coords: { latitude: 42, longitude: -83 } } as GeolocationPosition);
@@ -477,39 +504,21 @@ test('weather endpoint missing-key response and existing page fallback', async (
   const r = await page.request.get('/api/weather?latitude=42&longitude=-83');
   expect(r.status()).toBe(503);
   expect((await r.json()).error).toContain('not configured');
-  await page.getByRole('button', { name: 'Use my location' }).click();
-  await expect(page.getByText(/Weather is not configured/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
 });
-test('weather displays adapted data and shows failed refresh instead of stale weather', async ({
+test('disabled weather remains hidden even when a weather response is available', async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    navigator.geolocation.getCurrentPosition = (success) =>
-      success({ coords: { latitude: 42, longitude: -83 } } as GeolocationPosition);
+  let requests = 0;
+  await page.route('**/api/weather?**', (route) => {
+    requests++;
+    return route.fulfill({ json: { temperature: 72 } });
   });
-  await page.route('**/api/weather?**', (r) =>
-    r.fulfill({
-      json: {
-        location: 'Detroit',
-        temperature: 72,
-        feelsLike: 74,
-        humidity: 60,
-        windSpeed: 8,
-        condition: 'Clear',
-        description: 'clear sky',
-        icon: '01d',
-      },
-    }),
-  );
+  await nav(page, 'welcome');
+  await expect(
+    page.getByRole('navigation').getByRole('button', { name: 'Weather', exact: true }),
+  ).toHaveCount(0);
   await nav(page, 'weather');
-  await page.getByRole('button', { name: 'Use my location' }).click();
-  await expect(page.getByText('Detroit · Feels like 74°F')).toBeVisible();
-  await expect(page.getByText(/Humidity 60% · Wind 8 mph/)).toBeVisible();
-  await page.unroute('**/api/weather?**');
-  await page.route('**/api/weather?**', (r) =>
-    r.fulfill({ status: 502, json: { error: 'The weather request timed out. Please try again.' } }),
-  );
-  await page.getByRole('button', { name: 'Refresh weather' }).click();
-  await expect(page.getByText(/weather request timed out/)).toBeVisible();
-  await expect(page.getByText('Detroit · Feels like 74°F')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Use my location' })).toHaveCount(0);
+  expect(requests).toBe(0);
 });

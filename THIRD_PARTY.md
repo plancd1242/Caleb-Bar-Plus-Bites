@@ -8,3 +8,7 @@ The application’s logo is the PNG artwork supplied by the project owner on Sep
 - Open-Meteo: attribution appears next to weather results. The public endpoint’s terms must be checked before commercial operation; the application works without enabling location or weather.
 - GIPHY: optional server-side integration, disabled without a key. Follow GIPHY’s account and attribution terms if enabling it.
 - Emoji appearance depends on the operating system’s emoji font.
+
+## Thanksgiving special photographs
+
+Real stock-photo sources and licenses are recorded in `static/art/specials/photo-credits.json` and the publicly accessible `/special-photo-credits.html`. Photos are resized/letterboxed and WebP-optimized; snack, apple and ultimate panels combine photographs. Share-alike derivatives retain CC BY-SA 4.0 licensing. These are reference photographs, not pictures of actual restaurant servings. No new AI food images were generated.

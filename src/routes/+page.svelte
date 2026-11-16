@@ -8,10 +8,17 @@
   import Employee from '$lib/components/Employee.svelte';
   import { currentMenu, defaultSettings } from '$lib/menu';
   import type { CartLine, MenuItem, Order, Settings } from '$lib/types';
+  import Announcements from '$lib/components/Announcements.svelte';
+  import { weatherEnabled } from '$lib/announcements';
+  import { defaultSeasonal, seasonalSettings } from '$lib/seasonal';
   import { statuses } from '$lib/types';
   import { money } from '$lib/pricing';
   import { api } from '$lib/api';
+  let updateReady = false;
+  $: theme = seasonalSettings(settings.seasonal);
   let page = 'welcome';
+  let seasonalFocus = false;
+  let orderSpecial: MenuItem | null = null;
   let drawer = false;
   let now = new Date();
   let connection = 'Reconnecting…';
@@ -36,7 +43,7 @@
     { id: 'order', label: 'Place Your Order', icon: 'bag' },
     { id: 'main', label: 'Main Menu', icon: 'book' },
     { id: 'kids', label: 'Kids Menu', icon: 'kids' },
-    { id: 'weather', label: 'Weather', icon: 'sun' },
+    ...(weatherEnabled ? [{ id: 'weather', label: 'Weather', icon: 'sun' }] : []),
     { id: 'time', label: 'Time', icon: 'clock' },
   ];
   $: itemCount = cart.reduce((s, l) => s + l.quantity, 0);
@@ -156,6 +163,17 @@
     navigate('order');
   }
   onMount(() => {
+    if ('serviceWorker' in navigator)
+      void navigator.serviceWorker.getRegistration().then((registration) => {
+        if (!registration) return;
+        updateReady = !!registration.waiting;
+        registration.addEventListener('updatefound', () => {
+          registration.installing?.addEventListener('statechange', () => {
+            updateReady = !!registration.waiting;
+          });
+        });
+        void registration.update().catch(() => {});
+      });
     disposed = false;
     try {
       const saved = JSON.parse(localStorage.getItem('barn-cart') ?? '[]');
@@ -247,7 +265,12 @@
 </script>
 
 <svelte:head><title>Caleb Bar + Bites · Good food. Brighter days.</title></svelte:head>
-<div class="app-shell">
+<div
+  class="app-shell"
+  class:thanksgiving={theme.thanksgiving}
+  class:seasonal-motion={theme.animations && !theme.lightweight}
+  class:lightweight={theme.lightweight}
+>
   {#if drawer}<button
       class="drawer-scrim"
       aria-label="Close navigation"
@@ -255,7 +278,7 @@
     ></button>{/if}
   <aside class="sidebar" class:open={drawer}>
     <a class="brand" href="#welcome" onclick={() => navigate('welcome')}
-      ><img src="/icons/logo.png" alt="Caleb Bar + Bites illustrated lakeside logo" /><span
+      ><img src="/icons/logo.png" alt="Caleb Bar + Bites illustrated restaurant logo" /><span
         >Caleb’s<small>BAR + BITES</small></span
       ></a
     >
@@ -299,7 +322,7 @@
       <div class="topbar-left">
         <button class="mobile-menu" aria-label="Open navigation" onclick={() => (drawer = !drawer)}
           ><Icon name="menu" /></button
-        ><span class="breadcrumb">YOUR LAKESIDE HAPPY PLACE <span>✦</span></span>
+        ><span class="breadcrumb">WELCOME TO HAVEN HILL FARM <span>✦</span></span>
       </div>
       <div class="header-status">
         <span class="open-status" class:closed={!settings.open}
@@ -310,7 +333,53 @@
       </div>
     </header>
     <main>
+      {#if updateReady}<div class="notice" role="status">
+          An app update is ready. Finish your order, then close all Caleb’s app windows and reopen
+          to update safely.
+        </div>{/if}
+      {#if theme.thanksgiving}<div class="festive-banner">
+          <strong>🎉 GRAND OPENING — NOVEMBER 26, 2026</strong>
+          <p>Happy Thanksgiving from Caleb’s Bar + Bites!</p>
+        </div>{/if}
+      {#if theme.decorations}<div
+          class="seasonal-decor"
+          class:leaves-falling={theme.fallingLeaves &&
+            theme.leaves &&
+            theme.animations &&
+            !theme.lightweight}
+          aria-hidden="true"
+        >
+          {#if theme.leaves}<span class="leaf-art">🍂</span><span class="leaf-art">🍁</span>{/if}
+          {#if theme.confetti}<span class="confetti-art">✦ · ✧ · ✦</span>{/if}
+        </div>
+        {#if theme.pumpkins}<img
+            class="autumn-decoration"
+            src="/art/autumn-lite.svg"
+            alt=""
+            width="140"
+            height="63"
+            loading="lazy"
+            decoding="async"
+          />{/if}
+        {#if theme.other && !theme.lightweight}<div class="festive-friends" aria-hidden="true">
+            <img
+              src="/art/seasonal-table.webp"
+              alt=""
+              width="140"
+              height="95"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>{/if}
+      {/if}
       {#if storageError}<div class="notice" role="alert">{storageError}</div>{/if}
+      {#if page === 'welcome' || page === 'main' || page === 'kids'}<div
+          class="notice cherry-recipe-note"
+          role="note"
+        >
+          Menu correction: Cherry Pop is made without lime juice. The printed artwork may still list
+          lime juice.
+        </div>{/if}
       {#if page === 'welcome'}<div class="welcome-heading">
           <p class="eyebrow"><span class="tiny-leaf">✦</span> PULL UP A CHAIR. STAY A LITTLE.</p>
           <p class="welcome-date">
@@ -325,22 +394,22 @@
             </h1>
             <p>A little bite. A colorful sip.<br />A whole lot of happy.</p>
             <button class="primary hero-cta" onclick={() => navigate('order')}
-              ><Icon name="bag" size={21} /> Place Your Order <Icon name="arrow" /></button
+              ><Icon name="bag" size={21} /> Order Here <Icon name="arrow" /></button
             >
             <div class="hero-footnote"><span>♡</span> Made with care. Served with a smile.</div>
           </div>
-          <div class="hero-art">
-            <img
-              src="/art/lakeside.svg"
-              alt="An original illustration of a sunset lake, pine trees, string lights, and a welcoming wooden dock"
-            />
-            <div class="art-badge">
-              <Icon name="sun" size={25} /><span
-                >Life tastes better<br /><strong>by the lake.</strong></span
-              >
-            </div>
-            <div class="wood-label">SIPS · BITES · GOOD TIMES</div>
-          </div>
+          {#if theme.farm}<div class="hero-art">
+              <img
+                src={theme.lightweight ? '/art/farm.svg' : '/art/farm-illustrated.webp'}
+                alt="A welcoming Haven Hill Farm with a barn, pasture animals, wooden fences and autumn trees"
+              />
+              <div class="art-badge">
+                <Icon name="sun" size={25} /><span
+                  >Life by the Farm<br /><strong>Haven Hill Farm</strong></span
+                >
+              </div>
+              <div class="wood-label">SIPS · BITES · GOOD TIMES</div>
+            </div>{/if}
         </section>
         <div class="welcome-section-label">
           <h2>Find your kind of happy.</h2>
@@ -349,7 +418,7 @@
         <div class="quick-cards">
           <button class="quick-card menu-card" onclick={() => navigate('main')}
             ><span class="quick-icon"><Icon name="book" size={28} /></span><span class="quick-copy"
-              ><small>THE CLASSICS & THE CRAVINGS</small><strong>Our main menu</strong><span
+              ><small>THE CLASSICS & THE CRAVINGS</small><strong>View Menu</strong><span
                 >Bites, sips & sweet little treats.</span
               ></span
             ><span class="round-arrow">↗</span></button
@@ -362,7 +431,14 @@
           >
         </div>
         <div class="welcome-bottom">
-          <div class="weather-card"><Weather compact /></div>
+          <Announcements
+            {settings}
+            {now}
+            explore={() => {
+              seasonalFocus = true;
+              navigate('order');
+            }}
+          />
           <button class="time-card" onclick={() => navigate('time')}
             ><Icon name="clock" size={25} />
             <div>
@@ -374,8 +450,8 @@
           >
           <div class="special-card">
             <span>✦ A LITTLE SOMETHING SPECIAL</span>
-            <h3>Better together.</h3>
-            <p>A bite + a mocktail.<br />A happy little <strong>$3.50 saving.</strong></p>
+            <h3>A little something special.</h3>
+            <p>A bite + a mocktail.<br />Explore available offers at checkout.</p>
             <button class="text-button" onclick={() => navigate('order')}
               >Find your pair <Icon name="arrow" size={17} /></button
             >
@@ -387,10 +463,21 @@
           >
         </footer>
       {:else if page === 'main' || page === 'kids'}{#key page}<MenuViewer
+            {menu}
+            onSpecial={(item) => {
+              orderSpecial = item;
+              navigate('order');
+            }}
             kids={page === 'kids'}
             onOrder={() => navigate('order')}
           />{/key}
       {:else if page === 'order'}<OrderFlow
+          initialSeasonal={seasonalFocus}
+          initialSpecial={orderSpecial}
+          onSpecialHandled={() => {
+            orderSpecial = null;
+            seasonalFocus = false;
+          }}
           {menu}
           {settings}
           {cart}
@@ -407,7 +494,7 @@
             authorized = value;
           }}
         />
-      {:else if page === 'weather'}<div class="page-heading">
+      {:else if weatherEnabled && page === 'weather'}<div class="page-heading">
           <div>
             <p class="eyebrow">A MOMENT OUTSIDE</p>
             <h1>The view looks good on you.</h1>
@@ -415,7 +502,7 @@
           </div>
         </div>
         <section class="weather-page panel">
-          <Weather /><img src="/art/lakeside.svg" alt="Pine trees around a peaceful sunset lake" />
+          <Weather /><img src="/art/farm.svg" alt="Farm animals in rolling autumn fields" />
         </section>
       {:else if page === 'time'}<section class="clock-page">
           <p class="eyebrow">NO NEED TO RUSH</p>
@@ -435,7 +522,7 @@
         </section>
       {:else if page === 'confirmation'}{#if receipt}<section class="confirmation panel">
             <div class="confirmation-check"><Icon name="check" size={42} /></div>
-            <p class="eyebrow">ORDER SENT!</p>
+            <p class="eyebrow">✓ Order Submitted!</p>
             <h1>You’re in good hands, {receipt.name}.</h1>
             <p>A little deliciousness is on its way.</p>
             <div class="receipt-summary">
@@ -456,9 +543,14 @@
                   >
                 </div>{/each}
             </div>
+            <p>
+              Payment status: {receipt.paymentStatus === 'confirmed'
+                ? 'Confirmed by staff'
+                : 'Not confirmed'}. Submitting an order does not confirm payment.
+            </p>
             <div class="payment-note">
-              <strong>Please give your payment to your waiter.</strong>
-              <p>Tell him or her your name so they can match the payment with your order.</p>
+              <strong>Please deposit your exact payment at the Payment Station.</strong>
+              <p>Need change or assistance? Ring the bell!</p>
             </div>
             {#if gif}<img
                 class="celebration-gif"

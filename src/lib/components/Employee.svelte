@@ -4,11 +4,82 @@
   import { money } from '$lib/pricing';
   import { statuses, type Order, type MenuItem, type Settings } from '$lib/types';
   import Icon from './Icon.svelte';
+  import AnnouncementManager from './AnnouncementManager.svelte';
+  import SeasonalManagement from './SeasonalManagement.svelte';
+  import { categories } from '$lib/menu-management';
   export let authorized = false;
   export let menu: MenuItem[];
   export let settings: Settings;
   export let refresh: () => Promise<void>;
   export let onAuth: (value: boolean) => void;
+  let editor: {
+    id?: string;
+    name: string;
+    description: string;
+    category: MenuItem['category'];
+    price: string;
+    seasonal: boolean;
+    visibility: NonNullable<MenuItem['visibility']>;
+    special: boolean;
+    available: boolean;
+    variable: boolean;
+    revision: number;
+  } | null = null;
+  let removeItem: MenuItem | null = null;
+  function showDialog(node: HTMLDialogElement) {
+    node.showModal();
+    return { destroy: () => node.close() };
+  }
+  function edit(item?: MenuItem) {
+    editor = {
+      id: item?.id,
+      seasonal: item?.seasonal ?? tab === 'Seasonal Management',
+      visibility: item?.visibility ?? (tab === 'Seasonal Management' ? 'order' : 'both'),
+      name: item?.name ?? '',
+      description: item?.description ?? '',
+      category: item?.category ?? 'Bites',
+      price: item?.price == null ? '' : (item.price / 100).toFixed(2),
+      special: item?.special ?? false,
+      available: item?.available !== false && !!item,
+      variable: !!item && item.price === null,
+      revision: settings.revision,
+    };
+    error = '';
+  }
+  async function saveItem() {
+    if (!editor) return;
+    try {
+      const item = {
+        seasonal: editor.seasonal,
+        visibility: editor.visibility,
+        name: editor.name,
+        description: editor.description,
+        category: editor.category,
+        special: editor.special || editor.category === 'Specials',
+        available: editor.available,
+        ...(!editor.variable ? { price: cents(editor.price) } : {}),
+      };
+      if (
+        await setting({
+          revision: editor.revision,
+          ...(editor.id ? { item: { id: editor.id, ...item } } : { createItem: item }),
+        })
+      )
+        editor = null;
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not save item.';
+    }
+  }
+  let integration: { giphy: { status: string } } | null = null;
+  let integrationOrigin = '';
+  async function inspectIntegrations() {
+    try {
+      integrationOrigin = location.origin;
+      integration = await api('/integrations');
+    } catch {
+      error = 'Could not check configuration on this server.';
+    }
+  }
   let code = '';
   let error = '';
   let busy = false;
@@ -23,6 +94,8 @@
     'Live Orders',
     'Order History',
     'Menu Manager',
+    'Seasonal Management',
+    'Announcement Manager',
     'Price Manager',
     'Restaurant Open / Closed',
     'Station Management',
@@ -76,8 +149,10 @@
     try {
       await api('/settings', body);
       await refresh();
+      return true;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Couldn’t save.';
+      return false;
     } finally {
       busy = false;
     }
@@ -202,9 +277,11 @@
           <small>{new Date(order.createdAt).toLocaleString()}</small
           >{#each order.lines as line, i}<div class="ticket-line">
               <div>
-                <strong>{line.quantity} × {line.name}</strong><small
-                  >{line.option} {line.note}</small
-                ><small
+                <strong>{line.quantity} × {line.name}</strong>{#if line.contents}<small
+                    >{line.contents
+                      .map((part) => `${part.quantity * line.quantity} × ${part.name}`)
+                      .join(', ')}</small
+                  >{/if}<small>{line.option} {line.note}</small><small
                   >{line.price === null
                     ? 'Price confirmation needed'
                     : money(line.price) + ' each'}</small
@@ -244,19 +321,60 @@
             >{/if}
         </article>{/each}
     </div>
-  {:else if tab === 'Menu Manager' || tab === 'Price Manager'}<div class="panel">
+  {:else if tab === 'Announcement Manager'}<AnnouncementManager {settings} save={setting} />
+  {:else if tab === 'Menu Manager' || tab === 'Price Manager' || tab === 'Seasonal Management'}<div
+      class="panel"
+    >
+      {#if tab === 'Seasonal Management'}<SeasonalManagement
+          {settings}
+          {menu}
+          save={setting}
+        />{/if}
       <h2>
         {tab === 'Menu Manager' ? 'Keep the menu fresh.' : 'A fair price for every favorite.'}
       </h2>
       <p>Changes update all connected stations. Previously submitted orders keep their prices.</p>
-      {#each menu as item}<div class="manager-row">
-          <span class="manager-emoji">{item.emoji}</span>
+      {#if tab !== 'Price Manager'}
+        <p>
+          Add and edit items, prices, Specials, and availability here. The illustrated menu artwork
+          stays unchanged; live items appear in ordering.
+        </p>
+        <button class="primary" disabled={busy} onclick={() => edit()}>Add menu item</button>
+      {:else}<button class="text-button" onclick={() => (tab = 'Menu Manager')}
+          >Edit item details and Specials in Menu Manager</button
+        >{/if}
+      {#each menu.filter((i) => !i.retired && (tab !== 'Seasonal Management' || i.seasonal)) as item}<div
+          class="manager-row"
+        >
+          <span class="manager-emoji"
+            >{#if item.image}<img
+                src={item.image}
+                alt=""
+                width="48"
+                height="36"
+                loading="lazy"
+              />{:else}{item.emoji}{/if}</span
+          >
           <div>
             <strong>{item.name}</strong><small
-              >{item.kids ? 'Kids menu' : 'Main menu'} · {item.category}</small
+              >{item.kids ? 'Kids menu' : 'Main menu'} · {item.category}{item.special
+                ? ' · Special'
+                : ''}</small
             >
           </div>
-          {#if tab === 'Menu Manager'}<button
+          {#if tab !== 'Price Manager'}<button
+              class="secondary"
+              disabled={busy}
+              onclick={() => edit(item)}>Edit</button
+            >
+            <button
+              class="text-button"
+              disabled={busy}
+              onclick={() => {
+                removeItem = item;
+                error = '';
+              }}>Remove</button
+            ><button
               class={item.available === false ? 'sold-toggle' : 'available-toggle'}
               disabled={busy}
               onclick={() =>
@@ -306,18 +424,118 @@
     </div>
   {:else}<div class="panel settings-panel">
       <h2>The little details.</h2>
+      <button class="secondary" onclick={inspectIntegrations}
+        >Check GIPHY configuration on this server</button
+      >
+      {#if integration}<p role="status">GIPHY: <strong>{integration.giphy.status}</strong></p>
+        <p>Server checked: {integrationOrigin}</p>{/if}
+      <p>
+        Local development reads local Wrangler environment files. The deployed Cloudflare app reads
+        its own Worker bindings and secrets. These are separate configurations. “Configured” means a
+        nonempty, non-placeholder value exists; it does not prove the provider accepts it.
+      </p>
       <label class="check-label"
         ><input
           type="checkbox"
           checked={settings.promotions}
           disabled={busy}
           onchange={(e) => setting({ promotions: e.currentTarget.checked })}
-        /> Enable menu specials</label
+        /> Enable bundle promotions</label
       >
       <p>Tax: <strong>$0.00</strong> · Currency: <strong>USD</strong></p>
       <p>Menu revision: {settings.revision}</p>
       <p>
-        Payment is collected by your waiter. Weather and celebration animations are optional and
-        never required for orders.
+        Payment is deposited at the Payment Station; ring the bell if you need change or assistance.
+        Weather and celebration animations are optional and never required for orders.
       </p>
     </div>{/if}{/if}
+
+{#if authorized && editor}<dialog
+    class="modal"
+    use:showDialog
+    onclose={() => (editor = null)}
+    aria-label={editor.id ? 'Edit menu item' : 'Add menu item'}
+  >
+    <h2>{editor.id ? 'Edit menu item' : 'Add menu item'}</h2>
+    {#if error}<p class="notice error" role="alert">{error}</p>{/if}
+    <form
+      onsubmit={(event) => {
+        event.preventDefault();
+        void saveItem();
+      }}
+    >
+      <label for="item-name">Item name</label><input
+        id="item-name"
+        bind:value={editor.name}
+        maxlength="80"
+        required
+      />
+      <label for="item-description">Description / ingredients</label><textarea
+        id="item-description"
+        bind:value={editor.description}
+        maxlength="500"></textarea>
+      <label for="item-category">Category</label><select
+        id="item-category"
+        bind:value={editor.category}
+        disabled={editor.variable}
+      >
+        {#each categories as category}<option>{category}</option>{/each}
+      </select>
+      {#if editor.variable}<p>Price confirmed individually per order.</p>{:else}
+        <label for="item-price">Price ($)</label><input
+          id="item-price"
+          inputmode="decimal"
+          bind:value={editor.price}
+          required
+        />
+      {/if}
+      <label class="check-label"
+        ><input type="checkbox" bind:checked={editor.seasonal} /> Seasonal item</label
+      >
+      <label for="item-visibility">Display location</label><select
+        id="item-visibility"
+        bind:value={editor.visibility}
+        ><option value="order">Order Here only</option><option value="menu">View Menu only</option
+        ><option value="both">Both</option></select
+      >
+      <label class="check-label"
+        ><input type="checkbox" bind:checked={editor.special} /> Mark as a Special</label
+      >
+      <p class="fine-print">
+        Bundle eligibility follows the category. Items in Specials do not qualify for category
+        bundles.
+      </p>
+      <label class="check-label"
+        ><input type="checkbox" bind:checked={editor.available} /> Enabled on customer menu</label
+      >
+      <button class="primary" disabled={busy}>Save menu item</button>
+      <button type="button" class="secondary" disabled={busy} onclick={() => (editor = null)}
+        >Cancel</button
+      >
+    </form>
+  </dialog>{/if}
+{#if authorized && removeItem}<dialog
+    class="modal"
+    use:showDialog
+    onclose={() => (removeItem = null)}
+    aria-label="Remove menu item"
+  >
+    <h2>Remove {removeItem.name}?</h2>
+    <p>
+      This removes the item from the live menu. Past orders stay intact. To hide it temporarily,
+      cancel and turn availability off.
+    </p>
+    {#if error}<p class="notice error" role="alert">{error}</p>{/if}
+    <button class="secondary" disabled={busy} onclick={() => (removeItem = null)}>Cancel</button>
+    <button
+      class="primary"
+      disabled={busy}
+      onclick={async () => {
+        if (
+          removeItem &&
+          (await setting({ removeItem: removeItem.id, revision: settings.revision }))
+        )
+          removeItem = null;
+      }}>Confirm removal</button
+    >
+  </dialog>{/if}
